@@ -1,0 +1,37 @@
+services:
+  dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: dixit-euskadi-dev
+    ports:
+      - "3002:3000"
+    volumes:
+      - .:/app
+      - /app/node_modules
+    environment:
+      - NODE_ENV=development
+      - CHOKIDAR_USEPOLLING=true
+      - CHOKIDAR_INTERVAL=100
+      - WATCHPACK_POLLING=true
+      - VITE_HMR_HOST=localhost
+      - VITE_HMR_CLIENT_PORT=3000
+    command: npm run dev
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000', (r) => {if (r.statusCode !== 200) throw new Error(r.statusCode)})"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.prod
+    container_name: dixit-euskadi-app
+    ports:
+      - "3001:3000"
+    profiles:
+      - prod
+    restart: unless-stopped
