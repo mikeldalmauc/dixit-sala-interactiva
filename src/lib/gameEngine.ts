@@ -30,6 +30,7 @@ export interface GameState {
   puntuacion: Record<string, number>;
   ultimaRonda: boolean;
   finalizada: boolean;
+  porRepartir: Record<string, string[]>; // mesa -> cartas sacadas del mazo pendientes de enviar a su pared
 }
 
 function shuffle<T>(array: T[]): T[] {
@@ -50,7 +51,9 @@ export function getState(): GameState | null {
   const stored = localStorage.getItem(GAME_KEY);
   if (!stored) return null;
   try {
-    return JSON.parse(stored) as GameState;
+    const state = JSON.parse(stored) as GameState;
+    state.porRepartir ??= {};
+    return state;
   } catch {
     return null;
   }
@@ -93,9 +96,29 @@ export function iniciarPartida(mesas: string[]): GameState {
     puntuacion,
     ultimaRonda: false,
     finalizada: false,
+    porRepartir: {},
   };
   save(state);
   return state;
+}
+
+// Saca la siguiente carta del mazo para una mesa: entra en su mano y queda
+// pendiente de enviar a su pared. Devuelve el id o null si el mazo está vacío.
+export function sacarCarta(mesa: string): string | null {
+  const state = getState();
+  if (!state || state.mazoRestante.length === 0) return null;
+  const id = state.mazoRestante.pop()!;
+  state.manos[mesa] = [...(state.manos[mesa] ?? []), id];
+  state.porRepartir[mesa] = [...(state.porRepartir[mesa] ?? []), id];
+  save(state);
+  return id;
+}
+
+export function marcarRepartida(mesa: string, id: string) {
+  const state = getState();
+  if (!state) return;
+  state.porRepartir[mesa] = (state.porRepartir[mesa] ?? []).filter((c) => c !== id);
+  save(state);
 }
 
 function rondaActual(state: GameState): RondaEnCurso {
@@ -216,12 +239,17 @@ export function calcularPuntuacion(): ResultadoRonda | null {
 export function siguienteRonda() {
   const state = getState();
   if (!state || !state.ronda?.resultado || state.finalizada) return;
+  // El manager saca del mazo tantas cartas como usó cada mesa y las reparte de nuevo.
   for (const mesa of state.mesas) {
     const jugadas = state.ronda.cartasJugadas[mesa] ?? [];
     state.manos[mesa] = state.manos[mesa].filter((id) => !jugadas.includes(id));
+    const nuevas: string[] = [];
     while (state.manos[mesa].length < tamanoMano(state.mesas.length) && state.mazoRestante.length > 0) {
-      state.manos[mesa].push(state.mazoRestante.pop()!);
+      const id = state.mazoRestante.pop()!;
+      state.manos[mesa].push(id);
+      nuevas.push(id);
     }
+    state.porRepartir[mesa] = [...(state.porRepartir[mesa] ?? []), ...nuevas];
   }
   state.pisteroIndex = (state.pisteroIndex + 1) % state.mesas.length;
   state.numRonda += 1;
@@ -252,14 +280,7 @@ function url(path: string, params: Record<string, string | number | undefined>):
 }
 
 export function buildManoUrl(state: GameState, mesa: string): string {
-  return url("/mano", {
-    mesa,
-    cartas: state.manos[mesa].join(","),
-    ronda: state.numRonda,
-    jugar: cartasAJugar(state, mesa),
-    n: cartasEnMesa(state),
-    rol: mesa === getPistero(state) ? "pistero" : undefined,
-  });
+  return url("/mano", { mesa, cartas: state.manos[mesa].join(",") });
 }
 
 export function buildCartaUrl(id: string): string {

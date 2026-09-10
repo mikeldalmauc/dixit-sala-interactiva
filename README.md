@@ -16,24 +16,26 @@ El mazo (`src/lib/cartas.ts`, imágenes en `public/cartas/`) son ilustraciones a
 
 ## Pantallas
 
+La unidad que viaja por la sala es **la carta individual** (`/carta/:id`): el manager envía cartas sueltas a las paredes, y cada mesa devuelve al manager la carta que juega.
+
 | Ruta | Dónde se abre | Qué hace |
 |---|---|---|
-| `/` | Dispositivo del profesor | Panel de control: reparto, jugadas, pista, montar la mesa, votos, revelado, marcador |
-| `/mano?mesa=…&cartas=…&ronda=…&jugar=…&n=…[&rol=pistero]` | Pared táctil de cada mesa | Mano privada. Tocar una carta la amplía **sin salir de la mano**; desde ahí se marca como elegida (la pared muestra su letra). Las mesas votantes votan en secreto en la propia pared y muestran el voto cuando lo pide el profesor |
-| `/tablero?c=…&p=…` | Pantalla central | Las cartas jugadas mezcladas y numeradas, con la pista. Tocar una carta la amplía |
-| `/tablero?…&s=…&v=…&pts=…&total=…` | Pantalla central | Revelado: carta del pistero, quién votó a cada carta y puntos |
-| `/carta/:id` | Cualquiera | Una carta a pantalla completa, sin texto |
+| `/` | Dispositivo del manager | Panel de control: reparto, sacar cartas del mazo, jugadas, pista, mezcla, votos, revelado, marcador |
+| `/carta/:id` | Paredes de las mesas y pared de votación | Una carta a pantalla completa, sin texto |
+| `/mano?mesa=…&cartas=…` | Solo en el dispositivo del manager | Ayuda de reparto: las cartas de una mesa, cada una se abre en una pestaña nueva para enviarla a su pared. No se envía a las paredes |
+| `/tablero?c=…&p=…` (opcional) | Pared de votación | Las cartas jugadas mezcladas y numeradas en una sola vista, con la pista |
+| `/tablero?…&s=…&v=…&pts=…&total=…` (opcional) | Pared de votación | Revelado: carta del pistero, quién votó a cada carta y puntos |
 
-El estado de la partida vive en `localStorage` del dispositivo del profesor (`src/lib/gameEngine.ts`). Lo que decide cada mesa (carta elegida, voto) solo vive en su pared y se reinicia con cada URL nueva de mano, es decir, cada ronda.
+El estado de la partida (mazo, manos, ronda, marcador) vive en `localStorage` del dispositivo del manager (`src/lib/gameEngine.ts`).
 
 ## Flujo de una ronda
 
-1. Panel, paso 1: **Abrir mano** / **Copiar enlace** por mesa y enviar cada mano a su pared.
-2. El pistero dice la pista; el profesor puede escribirla (aparece en la pantalla central). Cada mesa elige en su pared y dice su letra al profesor, que pulsa esa miniatura en el panel.
-3. **Mezclar y montar la mesa** → **Abrir tablero** / **Copiar enlace** y enviarlo a la pantalla central.
-4. Cada mesa vota en su pared (secreto). El profesor pide mostrar los votos y los anota en el panel (los números tachados son la carta propia de cada mesa).
-5. **Revelar y puntuar** → **Abrir revelado** para la pantalla central.
-6. **Siguiente ronda**: repone cartas, rota el pistero y genera los enlaces de mano nuevos (vuelta al paso 1).
+1. **Reparto inicial**: en el panel, **Ver mano** de cada mesa abre sus cartas; cada carta se abre en una pestaña nueva y se envía a la pared de esa mesa.
+2. El pistero elige una carta y dice la pista (el manager puede escribirla). Cada mesa envía al manager la carta que juega; el manager la marca en el panel pulsando su miniatura.
+3. **Mezclar las cartas jugadas**: el panel muestra el orden aleatorio numerado con **Abrir carta N** para enviar cada una a la pared de votación en ese orden (o **Abrir tablero** para enviarlas todas juntas y numeradas).
+4. Las mesas votan (nadie puede votar su propia carta) y el manager anota los votos en el panel.
+5. **Revelar y puntuar** aplica las reglas (opcionalmente **Abrir revelado** para la pared).
+6. **Siguiente ronda**: el manager saca del mazo tantas cartas como usó cada mesa; el panel las lista en «Cartas sacadas del mazo» con **Abrir carta** para enviarlas una a una a su pared. **Sacar carta** en cada mesa permite sacar cartas sueltas en cualquier momento.
 
 ## Desarrollo
 

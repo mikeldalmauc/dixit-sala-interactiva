@@ -9,7 +9,6 @@ import {
   setPista,
   toggleCartaJugada,
   cartasAJugar,
-  cartasEnMesa,
   todasLasMesasJugaron,
   montarMesa,
   slotsPropios,
@@ -18,9 +17,12 @@ import {
   todosVotaron,
   calcularPuntuacion,
   siguienteRonda,
+  sacarCarta,
+  marcarRepartida,
   ranking,
   resetGame,
   buildManoUrl,
+  buildCartaUrl,
   buildTableroUrl,
 } from "../lib/gameEngine";
 
@@ -30,26 +32,22 @@ function limpiarNombre(nombre: string) {
   return nombre.replace(/[,:]/g, " ").trim();
 }
 
-function EnlaceEnviar({ url, abrirLabel = "Abrir" }: { url: string; abrirLabel?: string }) {
+function abrir(url: string) {
+  window.open(url, "_blank");
+}
+
+function BotonCopiar({ url }: { url: string }) {
   const [copiado, setCopiado] = useState(false);
   return (
-    <span className="inline-flex gap-2">
-      <button
-        onClick={() => window.open(url, "_blank")}
-        className="text-xs px-3 py-1.5 bg-[#283618] text-white rounded-full font-bold hover:bg-[#1c2611]"
-      >
-        {abrirLabel}
-      </button>
-      <button
-        onClick={async () => {
-          setCopiado(await copiarTexto(url));
-          setTimeout(() => setCopiado(false), 1500);
-        }}
-        className="text-xs px-3 py-1.5 bg-[#F7F3EF] border border-[#D1CABF] rounded-full font-bold hover:bg-[#EBE7E0]"
-      >
-        {copiado ? "Copiado ✓" : "Copiar enlace"}
-      </button>
-    </span>
+    <button
+      onClick={async () => {
+        setCopiado(await copiarTexto(url));
+        setTimeout(() => setCopiado(false), 1500);
+      }}
+      className="text-xs px-3 py-1.5 bg-[#F7F3EF] border border-[#D1CABF] rounded-full font-bold hover:bg-[#EBE7E0]"
+    >
+      {copiado ? "Copiado ✓" : "Copiar enlace"}
+    </button>
   );
 }
 
@@ -83,7 +81,7 @@ function Configuracion() {
     <div className="min-h-screen bg-[#F7F3EF] flex items-center justify-center p-6" style={{ minHeight: "100dvh" }}>
       <div className="bg-white rounded-3xl shadow-xl p-10 max-w-md w-full border border-[#E5E0D5]">
         <h1 className="text-2xl font-serif font-bold text-[#283618] mb-1">Dixit · Sala interactiva</h1>
-        <p className="text-sm text-[#5A5A40] mb-6">Panel del profesor. Cada mesa es un equipo con su propia pared táctil.</p>
+        <p className="text-sm text-[#5A5A40] mb-6">Panel del manager. Cada mesa es un equipo con su propia pared táctil.</p>
 
         <label className="block text-xs uppercase tracking-widest text-[#5A5A40] font-bold mb-2">Número de mesas</label>
         <div className="flex gap-2 mb-2">
@@ -185,7 +183,21 @@ export default function PanelProfesor() {
   const mesaMontada = Boolean(ronda?.orden);
   const revelado = Boolean(ronda?.resultado);
   const tableroUrl = buildTableroUrl(state);
-  const nCartasMesa = cartasEnMesa(state);
+  const hayPorRepartir = state.mesas.some((m) => (state.porRepartir[m]?.length ?? 0) > 0);
+
+  const abrirYRepartir = (mesa: string, id: string) => {
+    abrir(buildCartaUrl(id));
+    marcarRepartida(mesa, id);
+  };
+
+  const sacarYAbrir = (mesa: string) => {
+    const id = sacarCarta(mesa);
+    if (!id) {
+      alert("El mazo está vacío.");
+      return;
+    }
+    abrirYRepartir(mesa, id);
+  };
 
   return (
     <div className="min-h-screen bg-[#F7F3EF] p-6 sm:p-10" style={{ minHeight: "100dvh" }}>
@@ -216,12 +228,39 @@ export default function PanelProfesor() {
 
       {state.finalizada && <FinDePartida state={state} />}
 
-      {/* 1. Manos: enviar a cada pared y marcar la carta jugada */}
-      <Paso n="1" titulo={mesaMontada ? "Manos de las mesas" : "Envía cada mano a su pared y marca la carta que juega cada mesa"}>
+      {/* Cartas sacadas del mazo pendientes de enviar a las paredes */}
+      {hayPorRepartir && (
+        <section className="mb-8 bg-[#FFF6EA] border border-[#E9B872] rounded-2xl p-5">
+          <h2 className="text-xs uppercase tracking-widest text-[#BC6C25] font-bold mb-3">
+            Cartas sacadas del mazo: abre cada una y envíala a la pared de su mesa
+          </h2>
+          <div className="flex flex-wrap gap-4">
+            {state.mesas.flatMap((mesa) =>
+              (state.porRepartir[mesa] ?? []).map((id) => (
+                <div key={id} className="flex items-center gap-3 bg-white rounded-xl border border-[#D1CABF] p-2 pr-3">
+                  <img src={cartaImg(id)} className="w-10 h-14 object-cover rounded" alt="" />
+                  <div>
+                    <p className="text-sm font-bold text-[#283618]">{mesa}</p>
+                    <button
+                      onClick={() => abrirYRepartir(mesa, id)}
+                      className="text-xs px-3 py-1 bg-[#283618] text-white rounded-full font-bold"
+                    >
+                      Abrir carta
+                    </button>
+                  </div>
+                </div>
+              )),
+            )}
+          </div>
+        </section>
+      )}
+
+      {/* 1. Manos y cartas jugadas */}
+      <Paso n="1" titulo={mesaMontada ? "Manos de las mesas" : "Marca la carta que juega cada mesa"}>
         {!mesaMontada && (
           <p className="text-sm text-[#5A5A40] mb-4">
-            El pistero elige una carta y dice la pista en voz alta. El resto elige en secreto. Cada mesa ve en su pared
-            la letra de su carta: pulsa esa miniatura aquí para jugarla.
+            El pistero elige una carta y dice la pista en voz alta; el resto elige en secreto. Cada mesa envía su carta al
+            manager: márcala aquí pulsando su miniatura. «Ver mano» abre las cartas de una mesa para repartirlas una a una.
           </p>
         )}
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5">
@@ -234,11 +273,25 @@ export default function PanelProfesor() {
                 key={mesa}
                 className={cn("bg-white rounded-2xl border p-4", esPistero ? "border-[#BC6C25]" : "border-[#D1CABF]")}
               >
-                <div className="flex items-center justify-between gap-2 mb-1">
+                <div className="flex items-center justify-between gap-2 mb-1 flex-wrap">
                   <span className="font-bold text-[#283618]">
                     {mesa} {esPistero && <span className="text-[#BC6C25]">· pistero</span>}
                   </span>
-                  <EnlaceEnviar url={buildManoUrl(state, mesa)} abrirLabel="Abrir mano" />
+                  <span className="inline-flex gap-2">
+                    <button
+                      onClick={() => abrir(buildManoUrl(state, mesa))}
+                      className="text-xs px-3 py-1.5 bg-[#F7F3EF] border border-[#D1CABF] rounded-full font-bold hover:bg-[#EBE7E0]"
+                    >
+                      Ver mano
+                    </button>
+                    <button
+                      onClick={() => sacarYAbrir(mesa)}
+                      disabled={state.mazoRestante.length === 0}
+                      className="text-xs px-3 py-1.5 bg-[#283618] text-white rounded-full font-bold hover:bg-[#1c2611] disabled:bg-[#D1CABF]"
+                    >
+                      Sacar carta
+                    </button>
+                  </span>
                 </div>
                 <p className="text-xs text-[#5A5A40] mb-3">
                   {mesaMontada
@@ -275,14 +328,14 @@ export default function PanelProfesor() {
         </div>
       </Paso>
 
-      {/* 2. Pista y montar la mesa */}
+      {/* 2. Pista y mezclar */}
       {!mesaMontada && !state.finalizada && (
-        <Paso n="2" titulo="Pista y mesa">
+        <Paso n="2" titulo="Pista y mezcla">
           <div className="flex flex-wrap items-center gap-3">
             <input
               value={ronda?.pista ?? ""}
               onChange={(e) => setPista(e.target.value)}
-              placeholder="Pista del pistero (opcional, se verá en la pantalla central)"
+              placeholder="Pista del pistero (opcional, aparece en el tablero)"
               className="flex-1 min-w-64 border border-[#D1CABF] rounded-lg px-3 py-2 bg-white"
               maxLength={80}
             />
@@ -291,24 +344,48 @@ export default function PanelProfesor() {
               onClick={() => montarMesa()}
               className="px-6 py-3 bg-[#BC6C25] hover:bg-[#A3591F] disabled:bg-[#D1CABF] disabled:cursor-not-allowed text-white rounded-full font-bold uppercase tracking-widest"
             >
-              Mezclar y montar la mesa
+              Mezclar las cartas jugadas
             </button>
           </div>
         </Paso>
       )}
 
-      {/* 3. Tablero en la pantalla central y votación */}
-      {mesaMontada && !revelado && tableroUrl && (
-        <Paso n="3" titulo="Envía la mesa a la pantalla central y recoge los votos">
-          <div className="bg-white rounded-2xl border border-[#D1CABF] p-4 mb-4 flex flex-wrap items-center gap-3">
-            <span className="text-sm text-[#283618]">
-              Las {nCartasMesa} cartas mezcladas{ronda?.pista && <> con la pista «{ronda.pista}»</>}:
-            </span>
-            <EnlaceEnviar url={tableroUrl} abrirLabel="Abrir tablero" />
+      {/* 3. Enviar a la pared de votación y recoger votos */}
+      {mesaMontada && !revelado && tableroUrl && ronda?.orden && (
+        <Paso n="3" titulo="Envía las cartas a la pared de votación, en este orden, y anota los votos">
+          <div className="bg-white rounded-2xl border border-[#D1CABF] p-4 mb-4">
+            <div className="flex flex-wrap gap-4 mb-3">
+              {ronda.orden.map((id, i) => (
+                <div key={id} className="flex items-center gap-3">
+                  <div className="relative w-12 h-16 rounded overflow-hidden">
+                    <img src={cartaImg(id)} className="w-full h-full object-cover" alt="" />
+                    <span className="absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-black/70 text-white text-xs font-black flex items-center justify-center">
+                      {i + 1}
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => abrir(buildCartaUrl(id))}
+                    className="text-xs px-3 py-1.5 bg-[#283618] text-white rounded-full font-bold hover:bg-[#1c2611]"
+                  >
+                    Abrir carta {i + 1}
+                  </button>
+                </div>
+              ))}
+            </div>
+            <div className="flex flex-wrap items-center gap-2 text-xs text-[#5A5A40]">
+              O todas juntas, numeradas{ronda.pista && <> con la pista «{ronda.pista}»</>}:
+              <button
+                onClick={() => abrir(tableroUrl)}
+                className="px-3 py-1.5 bg-[#F7F3EF] border border-[#D1CABF] rounded-full font-bold hover:bg-[#EBE7E0]"
+              >
+                Abrir tablero
+              </button>
+              <BotonCopiar url={tableroUrl} />
+            </div>
           </div>
           <p className="text-sm text-[#5A5A40] mb-4">
-            Cada mesa vota en secreto en su pared. Cuando todas hayan votado, pídeles que muestren el voto y anótalo
-            aquí. Los números tachados son la propia carta de esa mesa (no puede votarse).
+            Cada mesa (menos el pistero) vota qué carta es la del pistero. Los números tachados son la propia carta de esa
+            mesa: no puede votarse.
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-5">
             {votantes(state).map((mesa) => {
@@ -317,9 +394,9 @@ export default function PanelProfesor() {
                 <div key={mesa} className="bg-white rounded-2xl border border-[#D1CABF] p-4">
                   <p className="font-bold text-[#283618] mb-3">{mesa}</p>
                   <div className="flex flex-wrap gap-2">
-                    {ronda!.orden!.map((_, i) => {
+                    {ronda.orden!.map((_, i) => {
                       const propio = propios.includes(i);
-                      const votado = ronda!.votos[mesa] === i;
+                      const votado = ronda.votos[mesa] === i;
                       return (
                         <button
                           key={i}
@@ -357,29 +434,35 @@ export default function PanelProfesor() {
       {revelado && ronda?.resultado && tableroUrl && (
         <Paso n="4" titulo="Resultado de la ronda">
           <div className="bg-white rounded-2xl border border-[#D1CABF] p-6">
-            <div className="flex flex-wrap items-center gap-3 mb-4">
-              <span className="text-sm text-[#283618]">Revelado con votos y puntos para la pantalla central:</span>
-              <EnlaceEnviar url={tableroUrl} abrirLabel="Abrir revelado" />
-            </div>
             <p className="mb-1">
               La carta del pistero ({pistero}) era la <b>número {ronda.resultado.slotPistero + 1}</b>
               <span className="text-[#5A5A40]"> · «{getCarta(ronda.resultado.cartaPistero)?.titulo}»</span>
             </p>
             <p className="mb-1 text-[#4A5D4E]">Acertaron: {ronda.resultado.acertaron.join(", ") || "nadie"}</p>
             <p className="mb-4 text-[#5A5A40]">Fallaron: {ronda.resultado.fallaron.join(", ") || "nadie"}</p>
-            <ul className="mb-5 flex flex-wrap gap-3 text-sm">
+            <ul className="mb-4 flex flex-wrap gap-3 text-sm">
               {state.mesas.map((mesa) => (
                 <li key={mesa} className="bg-[#F7F3EF] rounded-xl px-4 py-2">
                   {mesa}: <b className="text-[#BC6C25]">+{ronda.resultado!.puntosGanados[mesa]}</b>
                 </li>
               ))}
             </ul>
+            <div className="flex flex-wrap items-center gap-2 text-xs text-[#5A5A40] mb-5">
+              Revelado con votos y puntos para la pared:
+              <button
+                onClick={() => abrir(tableroUrl)}
+                className="px-3 py-1.5 bg-[#F7F3EF] border border-[#D1CABF] rounded-full font-bold hover:bg-[#EBE7E0]"
+              >
+                Abrir revelado
+              </button>
+              <BotonCopiar url={tableroUrl} />
+            </div>
             {!state.finalizada && (
               <button
                 onClick={() => siguienteRonda()}
                 className="px-6 py-3 bg-[#4A5D4E] hover:bg-[#3a4a3e] text-white rounded-full font-bold uppercase tracking-widest"
               >
-                Siguiente ronda: reponer cartas y pasar el turno
+                Siguiente ronda: sacar cartas nuevas del mazo
               </button>
             )}
           </div>

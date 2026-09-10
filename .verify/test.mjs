@@ -1,6 +1,7 @@
 // Smoke test de una ronda completa con 3 mesas (variante de 2 cartas):
-// reparto, mano en pared (zoom + elegir + votar), jugadas en el panel,
-// montar la mesa, tablero central, votos, revelado y siguiente ronda.
+// reparto (mano -> carta en pestaña), sacar carta del mazo, jugadas en el
+// panel, mezclar, abrir cartas numeradas y tablero, votos, revelado y
+// siguiente ronda con cartas nuevas por repartir.
 //
 // Uso: con el contenedor de dev levantado (docker compose up -d --build dev,
 // puerto 3002 del host), ejecutar desde la raíz del repo:
@@ -13,6 +14,7 @@ import fs from 'fs';
 
 const BASE = process.env.BASE ?? 'http://host.docker.internal:3002/dixit-euskadi/#';
 const OUT = '/work/out';
+fs.rmSync(OUT, { recursive: true, force: true });
 fs.mkdirSync(OUT, { recursive: true });
 
 const log = [];
@@ -20,8 +22,8 @@ const browser = await chromium.launch();
 const context = await browser.newContext({ viewport: { width: 1400, height: 900 } });
 
 function track(p, tag) {
-  p.on('console', (msg) => msg.type() === 'error' && log.push(`[${tag}] ${msg.text()}`));
-  p.on('pageerror', (err) => log.push(`[${tag}-pageerror] ${err.message}`));
+  p.on('console', (msg) => msg.type() === 'error' && !msg.text().includes('WebSocket') && log.push(`[${tag}] ${msg.text()}`));
+  p.on('pageerror', (err) => !err.message.includes('WebSocket') && log.push(`[${tag}-pageerror] ${err.message}`));
 }
 
 async function popup(action) {
@@ -44,60 +46,49 @@ async function run() {
   await page.waitForSelector('text=Pistero:');
   await page.screenshot({ path: `${OUT}/02-panel-reparto.png`, fullPage: true });
 
-  // Mano del pistero (mesa 1): zoom + elegir.
-  const manoPistero = await popup(() => page.locator('button:has-text("Abrir mano")').nth(0).click());
-  track(manoPistero, 'mano-pistero');
-  await manoPistero.screenshot({ path: `${OUT}/03-mano-pistero.png`, fullPage: true });
-  await manoPistero.locator('button[class*="aspect-"]').first().click();
-  await manoPistero.waitForSelector('text=Elegir esta carta');
-  await manoPistero.screenshot({ path: `${OUT}/04-mano-zoom.png` });
-  await manoPistero.click('button:has-text("Elegir esta carta")');
-  await manoPistero.waitForSelector('text=Carta elegida');
-  log.push(`[info] mano pistero muestra votación: ${await manoPistero.locator('text=Votación').count()} (esperado 0)`);
-  await manoPistero.screenshot({ path: `${OUT}/05-mano-elegida.png`, fullPage: true });
-  await manoPistero.close();
+  // Mano (ayuda de reparto): cada carta se abre en pestaña nueva.
+  const mano = await popup(() => page.locator('button:has-text("Ver mano")').nth(0).click());
+  track(mano, 'mano');
+  await mano.screenshot({ path: `${OUT}/03-mano.png`, fullPage: true });
+  const carta = await popup(() => mano.locator('button[class*="aspect-"]').first().click());
+  track(carta, 'carta');
+  log.push(`[info] url carta: ${carta.url()}`);
+  await carta.screenshot({ path: `${OUT}/04-carta.png` });
+  await carta.close();
+  await mano.close();
 
-  // Mano de una mesa votante (mesa 2): 2 cartas + voto secreto.
-  const manoVotante = await popup(() => page.locator('button:has-text("Abrir mano")').nth(1).click());
-  track(manoVotante, 'mano-votante');
-  for (let i = 0; i < 2; i++) {
-    await manoVotante.locator('button[class*="aspect-"]').nth(i).click();
-    await manoVotante.click('button:has-text("Elegir esta carta")');
-  }
-  await manoVotante.waitForSelector('text=Cartas elegidas');
-  await manoVotante.click('button:has-text("3")');
-  await manoVotante.waitForSelector('text=Voto guardado');
-  await manoVotante.click('button:has-text("Mostrar voto")');
-  await manoVotante.screenshot({ path: `${OUT}/06-mano-voto.png`, fullPage: true });
-  await manoVotante.close();
+  // Sacar carta del mazo para la mesa 2: abre la carta y sube la mano a 8.
+  const sacada = await popup(() => page.locator('button:has-text("Sacar carta")').nth(1).click());
+  await sacada.close();
+  log.push(`[info] mazo tras sacar: ${await page.locator('text=/Mazo: \\d+/').innerText()} (esperado 26)`);
+  await page.screenshot({ path: `${OUT}/05-sacada.png`, fullPage: true });
 
   // Panel: jugar las cartas necesarias de cada mesa.
-  const bloques = page.locator('div.bg-white.rounded-2xl.border.p-4:has(button:has-text("Abrir mano"))');
+  const bloques = page.locator('div.bg-white.rounded-2xl.border.p-4:has(button:has-text("Ver mano"))');
   const n = await bloques.count();
   log.push(`[info] bloques de mesa: ${n}`);
   for (let i = 0; i < n; i++) {
     const bloque = bloques.nth(i);
-    const texto = await bloque.innerText();
-    const necesarias = Number(/Juega (\d)/.exec(texto)?.[1] ?? 1);
+    const necesarias = Number(/Juega (\d)/.exec(await bloque.innerText())?.[1] ?? 1);
     for (let k = 0; k < necesarias; k++) {
       await bloque.locator('button[class*="aspect-"]').nth(k).click();
     }
   }
   await page.fill('input[placeholder^="Pista"]', 'Un viaje sin mapa');
-  await page.screenshot({ path: `${OUT}/07-jugadas.png`, fullPage: true });
-  await page.click('button:has-text("Mezclar y montar la mesa")');
-  await page.waitForSelector('text=recoge los votos');
+  await page.screenshot({ path: `${OUT}/06-jugadas.png`, fullPage: true });
+  await page.click('button:has-text("Mezclar las cartas jugadas")');
+  await page.waitForSelector('text=pared de votación');
+  await page.screenshot({ path: `${OUT}/07-orden.png`, fullPage: true });
+  log.push(`[info] botones "Abrir carta N": ${await page.locator('button:has-text("Abrir carta ")').count()} (esperado 5)`);
 
+  const c1 = await popup(() => page.click('button:has-text("Abrir carta 1")'));
+  await c1.close();
   const tablero = await popup(() => page.click('button:has-text("Abrir tablero")'));
   track(tablero, 'tablero');
-  await tablero.screenshot({ path: `${OUT}/08-tablero-votacion.png`, fullPage: true });
-  log.push(`[info] cartas en el tablero: ${await tablero.locator('button[class*="aspect-"]').count()} (esperado 5)`);
-  await tablero.locator('button[class*="aspect-"]').first().click();
-  await tablero.waitForSelector('text=toca para volver');
-  await tablero.screenshot({ path: `${OUT}/09-tablero-zoom.png` });
+  await tablero.screenshot({ path: `${OUT}/08-tablero.png`, fullPage: true });
   await tablero.close();
 
-  const votacion = page.locator('section', { hasText: 'recoge los votos' });
+  const votacion = page.locator('section', { hasText: 'pared de votación' });
   const bloquesVoto = votacion.locator('div.bg-white.rounded-2xl.border.p-4:has(p.font-bold)');
   const nv = await bloquesVoto.count();
   log.push(`[info] mesas votantes: ${nv} (esperado 2)`);
@@ -106,19 +97,24 @@ async function run() {
     log.push(`[info] votante ${i}: ${await bloque.locator('button[disabled]').count()} slots propios tachados (esperado 2)`);
     await bloque.locator('button:not([disabled])').first().click();
   }
-  await page.screenshot({ path: `${OUT}/10-votos.png`, fullPage: true });
   await page.click('button:has-text("Revelar y puntuar")');
   await page.waitForSelector('text=Resultado de la ronda');
-  await page.screenshot({ path: `${OUT}/11-resultado.png`, fullPage: true });
+  await page.screenshot({ path: `${OUT}/09-resultado.png`, fullPage: true });
 
   const revelado = await popup(() => page.click('button:has-text("Abrir revelado")'));
   track(revelado, 'revelado');
-  await revelado.screenshot({ path: `${OUT}/12-tablero-revelado.png`, fullPage: true });
+  await revelado.screenshot({ path: `${OUT}/10-revelado.png`, fullPage: true });
   await revelado.close();
 
   await page.click('button:has-text("Siguiente ronda")');
   await page.waitForSelector('text=Ronda 2');
-  await page.screenshot({ path: `${OUT}/13-ronda2.png`, fullPage: true });
+  await page.waitForSelector('text=Cartas sacadas del mazo');
+  // 5 cartas usadas, pero la mesa 2 ya tenía una de más por "Sacar carta": repone 4.
+  log.push(`[info] cartas por repartir: ${await page.locator('button:has-text("Abrir carta")').count()} (esperado 4)`);
+  await page.screenshot({ path: `${OUT}/11-ronda2-repartir.png`, fullPage: true });
+  const nueva = await popup(() => page.locator('button:has-text("Abrir carta")').first().click());
+  await nueva.close();
+  log.push(`[info] por repartir tras abrir una: ${await page.locator('button:has-text("Abrir carta")').count()} (esperado 3)`);
 }
 
 try {
