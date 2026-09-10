@@ -15,14 +15,4 @@ export function cartaImg(id: string): string {
   return carta ? `${import.meta.env.BASE_URL}${carta.imgUrl.replace(/^\//, "")}` : "";
 }
 
-export const LETRAS = "ABCDEFGH";
-
-export async function copiarTexto(texto: string): Promise<boolean> {
-  try {
-    await navigator.clipboard.writeText(texto);
-    return true;
-  } catch {
-    window.prompt("Copia este enlace:", texto);
-    return false;
-  }
-}
+export const LETRAS = "ABCDEFGHIJKLMNOP";
