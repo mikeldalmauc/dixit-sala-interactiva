@@ -11,7 +11,7 @@
 import { chromium } from 'playwright';
 import fs from 'fs';
 
-const BASE = process.env.BASE ?? 'http://host.docker.internal:3002/dixit-euskadi/#';
+const BASE = process.env.BASE ?? 'http://host.docker.internal:3002/dixit-sala-interactiva/#';
 const OUT = '/work/out';
 fs.rmSync(OUT, { recursive: true, force: true });
 fs.mkdirSync(OUT, { recursive: true });

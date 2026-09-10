@@ -5,7 +5,7 @@ import {defineConfig} from 'vite';
 
 export default defineConfig(() => {
   return {
-    base: '/dixit-euskadi/',
+    base: '/dixit-sala-interactiva/',
     plugins: [react(), tailwindcss()],
     resolve: {
       alias: {
