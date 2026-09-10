@@ -15,7 +15,7 @@ export default defineConfig(() => {
     server: {
       // El servidor de desarrollo se accede desde varias mesas-pantalla y la
       // pared en la misma red local, no solo desde localhost.
-      allowedHosts: true,
+      allowedHosts: true as const,
       watch: {
         usePolling: process.env.CHOKIDAR_USEPOLLING === 'true',
         interval: Number(process.env.CHOKIDAR_INTERVAL ?? 100),

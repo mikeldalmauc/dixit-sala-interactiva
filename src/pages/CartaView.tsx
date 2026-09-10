@@ -1,11 +1,10 @@
 import { useParams } from "react-router-dom";
-import { LUGARES } from "../lib/lugares";
+import { getCarta, cartaImg } from "../lib/utils";
 
-// Vista de una carta suelta a pantalla completa. Deliberadamente no muestra
-// nombre ni comarca: es la carta ambigua que se enseña en la sala.
+// Una carta a pantalla completa, sin ningún texto que la identifique.
 export default function CartaView() {
   const { id } = useParams<{ id: string }>();
-  const carta = LUGARES.find((l) => l.id === id);
+  const carta = id ? getCarta(id) : undefined;
 
   if (!carta) {
     return (
@@ -17,12 +16,7 @@ export default function CartaView() {
 
   return (
     <div className="h-screen w-screen bg-black flex items-center justify-center overflow-hidden" style={{ height: "100dvh" }}>
-      <img
-        src={`${import.meta.env.BASE_URL}${carta.imgUrl.replace(/^\//, "")}`}
-        alt="Lugar"
-        className="w-full h-full object-cover select-none"
-        draggable={false}
-      />
+      <img src={cartaImg(carta.id)} alt="Carta" className="w-full h-full object-contain select-none" draggable={false} />
     </div>
   );
 }

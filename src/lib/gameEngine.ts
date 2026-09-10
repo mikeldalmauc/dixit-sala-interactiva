@@ -1,22 +1,14 @@
-import { LUGARES } from "./lugares";
+import { CARTAS } from "./cartas";
 
-const GAME_KEY = "dixit_euskadi_game";
-const MANO_SIZE = 6;
+const GAME_KEY = "dixit_sala_game";
+const PUNTOS_PARA_GANAR = 30;
 
 export interface RondaEnCurso {
-  cartasJugadas: Record<string, string>; // mesa -> id de la carta jugada
-  orden: string[] | null; // ids mezclados, se rellena al "montar la pared"
-  votos: Record<string, number>; // mesa (no pistero) -> índice de la pared votado
-  resultado: ResultadoRonda | null; // se rellena al revelar, para que la pared sepa mostrar el resultado
-}
-
-export interface GameState {
-  mesas: string[];
-  mazoRestante: string[];
-  manos: Record<string, string[]>;
-  pisteroIndex: number;
-  ronda: RondaEnCurso | null;
-  puntuacion: Record<string, number>;
+  pista: string;
+  cartasJugadas: Record<string, string[]>; // mesa -> ids jugados (1, o 2 por mesa no pistera con 3 mesas)
+  orden: string[] | null; // ids mezclados, se rellena al montar la mesa
+  votos: Record<string, number>; // mesa votante -> índice de la mesa votado
+  resultado: ResultadoRonda | null;
 }
 
 export interface ResultadoRonda {
@@ -26,6 +18,18 @@ export interface ResultadoRonda {
   acertaron: string[];
   fallaron: string[];
   puntosGanados: Record<string, number>;
+}
+
+export interface GameState {
+  mesas: string[];
+  mazoRestante: string[];
+  manos: Record<string, string[]>;
+  pisteroIndex: number;
+  numRonda: number;
+  ronda: RondaEnCurso | null;
+  puntuacion: Record<string, number>;
+  ultimaRonda: boolean;
+  finalizada: boolean;
 }
 
 function shuffle<T>(array: T[]): T[] {
@@ -52,116 +56,183 @@ export function getState(): GameState | null {
   }
 }
 
-export function iniciarPartida(mesas: string[]): GameState {
-  const mazo = shuffle(LUGARES.map((l) => l.id));
-  const manos: Record<string, string[]> = {};
-  for (const mesa of mesas) {
-    manos[mesa] = mazo.splice(0, MANO_SIZE);
-  }
-  const puntuacion: Record<string, number> = {};
-  for (const mesa of mesas) puntuacion[mesa] = 0;
+// Reglas de Dixit: 6 cartas por jugador; con 3 jugadores, 7 cartas y cada
+// no-pistero juega 2 para que haya 5 cartas sobre la mesa.
+export function tamanoMano(numMesas: number): number {
+  return numMesas === 3 ? 7 : 6;
+}
 
-  const state: GameState = {
-    mesas,
-    mazoRestante: mazo,
-    manos,
-    pisteroIndex: 0,
-    ronda: null,
-    puntuacion,
-  };
-  save(state);
-  return state;
+export function cartasAJugar(state: GameState, mesa: string): number {
+  if (mesa === getPistero(state)) return 1;
+  return state.mesas.length === 3 ? 2 : 1;
+}
+
+export function cartasEnMesa(state: GameState): number {
+  return state.mesas.reduce((acc, m) => acc + cartasAJugar(state, m), 0);
 }
 
 export function getPistero(state: GameState): string {
   return state.mesas[state.pisteroIndex % state.mesas.length];
 }
 
-export function marcarCartaJugada(mesa: string, cardId: string) {
+export function iniciarPartida(mesas: string[]): GameState {
+  const mazo = shuffle(CARTAS.map((c) => c.id));
+  const manos: Record<string, string[]> = {};
+  const puntuacion: Record<string, number> = {};
+  for (const mesa of mesas) {
+    manos[mesa] = mazo.splice(0, tamanoMano(mesas.length));
+    puntuacion[mesa] = 0;
+  }
+  const state: GameState = {
+    mesas,
+    mazoRestante: mazo,
+    manos,
+    pisteroIndex: 0,
+    numRonda: 1,
+    ronda: null,
+    puntuacion,
+    ultimaRonda: false,
+    finalizada: false,
+  };
+  save(state);
+  return state;
+}
+
+function rondaActual(state: GameState): RondaEnCurso {
+  return state.ronda ?? { pista: "", cartasJugadas: {}, orden: null, votos: {}, resultado: null };
+}
+
+export function setPista(pista: string) {
   const state = getState();
   if (!state) return;
-  const ronda: RondaEnCurso = state.ronda ?? { cartasJugadas: {}, orden: null, votos: {}, resultado: null };
-  ronda.cartasJugadas[mesa] = cardId;
+  const ronda = rondaActual(state);
+  ronda.pista = pista;
+  state.ronda = ronda;
+  save(state);
+}
+
+export function toggleCartaJugada(mesa: string, cardId: string) {
+  const state = getState();
+  if (!state || state.ronda?.orden) return;
+  const ronda = rondaActual(state);
+  const actuales = ronda.cartasJugadas[mesa] ?? [];
+  const max = cartasAJugar(state, mesa);
+  let nuevas: string[];
+  if (actuales.includes(cardId)) {
+    nuevas = actuales.filter((id) => id !== cardId);
+  } else if (max === 1) {
+    nuevas = [cardId];
+  } else {
+    nuevas = actuales.length >= max ? [...actuales.slice(1), cardId] : [...actuales, cardId];
+  }
+  ronda.cartasJugadas[mesa] = nuevas;
   state.ronda = ronda;
   save(state);
 }
 
 export function todasLasMesasJugaron(state: GameState): boolean {
   if (!state.ronda) return false;
-  return state.mesas.every((m) => state.ronda!.cartasJugadas[m] !== undefined);
+  return state.mesas.every((m) => (state.ronda!.cartasJugadas[m]?.length ?? 0) === cartasAJugar(state, m));
 }
 
-export function montarPared(): GameState | null {
+export function montarMesa() {
   const state = getState();
-  if (!state || !state.ronda) return null;
-  const ids = Object.values(state.ronda.cartasJugadas);
-  state.ronda.orden = shuffle(ids);
+  if (!state || !state.ronda || !todasLasMesasJugaron(state)) return;
+  state.ronda.orden = shuffle(Object.values(state.ronda.cartasJugadas).flat());
+  state.ronda.votos = {};
   save(state);
-  return state;
+}
+
+export function slotsPropios(state: GameState, mesa: string): number[] {
+  const orden = state.ronda?.orden;
+  if (!orden) return [];
+  const propias = state.ronda?.cartasJugadas[mesa] ?? [];
+  return orden.map((id, i) => (propias.includes(id) ? i : -1)).filter((i) => i >= 0);
 }
 
 export function registrarVoto(mesa: string, slotIndex: number) {
   const state = getState();
-  if (!state || !state.ronda) return;
+  if (!state || !state.ronda?.orden || mesa === getPistero(state)) return;
+  if (slotsPropios(state, mesa).includes(slotIndex)) return;
   state.ronda.votos[mesa] = slotIndex;
   save(state);
 }
 
+export function votantes(state: GameState): string[] {
+  const pistero = getPistero(state);
+  return state.mesas.filter((m) => m !== pistero);
+}
+
+export function todosVotaron(state: GameState): boolean {
+  return Boolean(state.ronda?.orden) && votantes(state).every((m) => state.ronda!.votos[m] !== undefined);
+}
+
+// Puntuación clásica de Dixit:
+// - Todos o nadie aciertan: pistero 0, resto 2.
+// - Si no: pistero 3 y cada acertante 3.
+// - Cada no-pistero suma 1 por cada voto recibido en sus cartas señuelo.
 export function calcularPuntuacion(): ResultadoRonda | null {
   const state = getState();
-  if (!state || !state.ronda || !state.ronda.orden) return null;
-  const { ronda, mesas } = state;
+  if (!state || !state.ronda?.orden || !todosVotaron(state)) return null;
+  const { ronda } = state;
+  const orden = ronda.orden!;
   const pistero = getPistero(state);
-  const cartaPistero = ronda.cartasJugadas[pistero];
-  const slotPistero = ronda.orden.indexOf(cartaPistero);
-  const votantes = mesas.filter((m) => m !== pistero);
+  const cartaPistero = ronda.cartasJugadas[pistero][0];
+  const slotPistero = orden.indexOf(cartaPistero);
+  const vot = votantes(state);
 
-  const acertaron = votantes.filter((m) => ronda.votos[m] === slotPistero);
-  const fallaron = votantes.filter((m) => ronda.votos[m] !== slotPistero);
+  const acertaron = vot.filter((m) => ronda.votos[m] === slotPistero);
+  const fallaron = vot.filter((m) => ronda.votos[m] !== slotPistero);
 
   const puntosGanados: Record<string, number> = {};
-  for (const m of mesas) puntosGanados[m] = 0;
+  for (const m of state.mesas) puntosGanados[m] = 0;
 
-  const todosAcertaron = acertaron.length === votantes.length;
-  const nadieAcerto = acertaron.length === 0;
-
-  if (todosAcertaron || nadieAcerto) {
-    for (const m of votantes) puntosGanados[m] += 2;
+  if (acertaron.length === vot.length || acertaron.length === 0) {
+    for (const m of vot) puntosGanados[m] += 2;
   } else {
     puntosGanados[pistero] += 3;
     for (const m of acertaron) puntosGanados[m] += 3;
   }
 
-  // Bono por señuelo: por cada voto que caiga en tu propia carta jugada.
-  for (const m of votantes) {
-    const miCarta = ronda.cartasJugadas[m];
-    const miSlot = ronda.orden.indexOf(miCarta);
-    const votosRecibidos = votantes.filter((v) => v !== m && ronda.votos[v] === miSlot).length;
+  for (const m of vot) {
+    const misSlots = slotsPropios(state, m);
+    const votosRecibidos = vot.filter((v) => v !== m && misSlots.includes(ronda.votos[v])).length;
     puntosGanados[m] += votosRecibidos;
   }
 
-  for (const m of mesas) {
+  for (const m of state.mesas) {
     state.puntuacion[m] = (state.puntuacion[m] ?? 0) + puntosGanados[m];
   }
   const resultado: ResultadoRonda = { pistero, cartaPistero, slotPistero, acertaron, fallaron, puntosGanados };
   ronda.resultado = resultado;
-  save(state);
 
+  const alguienGano = Object.values(state.puntuacion).some((p) => p >= PUNTOS_PARA_GANAR);
+  if (state.ultimaRonda || alguienGano) state.finalizada = true;
+
+  save(state);
   return resultado;
 }
 
 export function siguienteRonda() {
   const state = getState();
-  if (!state || !state.ronda) return;
+  if (!state || !state.ronda?.resultado || state.finalizada) return;
   for (const mesa of state.mesas) {
-    const jugada = state.ronda.cartasJugadas[mesa];
-    state.manos[mesa] = state.manos[mesa].filter((id) => id !== jugada);
-    const nueva = state.mazoRestante.pop();
-    if (nueva) state.manos[mesa].push(nueva);
+    const jugadas = state.ronda.cartasJugadas[mesa] ?? [];
+    state.manos[mesa] = state.manos[mesa].filter((id) => !jugadas.includes(id));
+    while (state.manos[mesa].length < tamanoMano(state.mesas.length) && state.mazoRestante.length > 0) {
+      state.manos[mesa].push(state.mazoRestante.pop()!);
+    }
   }
   state.pisteroIndex = (state.pisteroIndex + 1) % state.mesas.length;
+  state.numRonda += 1;
   state.ronda = null;
+  // Dixit termina cuando se agota el mazo: la ronda que no pueda reponerse es la última.
+  state.ultimaRonda = state.mazoRestante.length < cartasEnMesa(state);
   save(state);
+}
+
+export function ranking(state: GameState): string[] {
+  return [...state.mesas].sort((a, b) => (state.puntuacion[b] ?? 0) - (state.puntuacion[a] ?? 0));
 }
 
 export function resetGame() {
@@ -169,13 +240,41 @@ export function resetGame() {
   window.dispatchEvent(new Event("dixit_state_changed"));
 }
 
-export function buildManoUrl(mesa: string, cartas: string[]): string {
-  const base = import.meta.env.BASE_URL;
-  const params = new URLSearchParams({ mesa, cartas: cartas.join(",") });
-  return `${base}#/mano?${params.toString()}`;
+// --- URLs autosuficientes para enviar a otras pantallas de la sala ---
+
+function url(path: string, params: Record<string, string | number | undefined>): string {
+  const qs = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) {
+    if (v !== undefined && v !== "") qs.set(k, String(v));
+  }
+  const q = qs.toString();
+  return `${window.location.origin}${import.meta.env.BASE_URL}#${path}${q ? `?${q}` : ""}`;
+}
+
+export function buildManoUrl(state: GameState, mesa: string): string {
+  return url("/mano", {
+    mesa,
+    cartas: state.manos[mesa].join(","),
+    ronda: state.numRonda,
+    jugar: cartasAJugar(state, mesa),
+    n: cartasEnMesa(state),
+    rol: mesa === getPistero(state) ? "pistero" : undefined,
+  });
 }
 
 export function buildCartaUrl(id: string): string {
-  const base = import.meta.env.BASE_URL;
-  return `${base}#/carta/${id}`;
+  return url(`/carta/${id}`, {});
+}
+
+export function buildTableroUrl(state: GameState): string | null {
+  const ronda = state.ronda;
+  if (!ronda?.orden) return null;
+  const base = { c: ronda.orden.join(","), p: ronda.pista, r: state.numRonda, pistero: getPistero(state) };
+  if (!ronda.resultado) return url("/tablero", base);
+  const votos = Object.entries(ronda.votos)
+    .map(([m, s]) => `${m}:${s}`)
+    .join(",");
+  const puntos = state.mesas.map((m) => `${m}:${ronda.resultado!.puntosGanados[m]}`).join(",");
+  const total = state.mesas.map((m) => `${m}:${state.puntuacion[m]}`).join(",");
+  return url("/tablero", { ...base, s: ronda.resultado.slotPistero, v: votos, pts: puntos, total });
 }

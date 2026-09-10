@@ -1,69 +1,52 @@
-# Non Dago? — Dixit de lugares de Euskadi
+# Dixit · Sala interactiva
 
-Juego de sala interactiva inspirado en Dixit: un equipo da una pista ambigua sobre un lugar de Euskadi, el resto elige de su propia mano una carta que también podría encajar, y toda la sala vota cuál era la carta original. Sin backend, sin cuentas: el mazo vive en el dispositivo del profesor y las manos privadas se reparten como URLs a las mesas-pantalla táctiles de la sala.
+Dixit para una sala interactiva con una pantalla central y cuatro paredes táctiles, una por mesa-equipo. Sin backend ni cuentas: el profesor lleva la partida desde su panel y **cada pantalla de la sala es una función pura de la URL que se abre en ella**, de modo que cualquier vista puede enviarse de una pantalla a otra con el sistema de la sala.
 
-Ver el diseño completo en [docs del proyecto hermano](../timeline-card-game/docs/PROPUESTA_DIXIT_EUSKADI.md) (`timeline-card-game/docs/PROPUESTA_DIXIT_EUSKADI.md`).
+## Cartas
 
-## Estado actual
+El mazo (`src/lib/cartas.ts`, imágenes en `public/cartas/`) son ilustraciones ambiguas y evocadoras de dominio público, al estilo Dixit. Cada carta tiene un `titulo` orientativo que solo ve el profesor; en las paredes y en la pantalla central nunca aparece texto que identifique la carta. Atribuciones en `public/CREDITS.md`.
 
-Prototipo funcional con un mazo de **30 lugares de prueba** (ilustraciones placeholder abstractas en `public/lugar-*.svg`) para validar el ciclo completo de una ronda antes de generar las 40 ilustraciones definitivas con IA.
+## Reglas (Dixit clásico)
 
-## Cómo se juega
+- 6 cartas por mesa. Con **3 mesas** se aplica la variante oficial: 7 cartas en mano y cada mesa no pistera juega 2 cartas, para que haya 5 sobre la mesa.
+- El **pistero** elige una carta y da una pista en voz alta (palabra, frase, sonido...). El resto elige en secreto la carta de su mano que mejor encaje.
+- Las cartas se mezclan y se numeran. Todas las mesas menos el pistero votan cuál es la del pistero; **nadie puede votar su propia carta**.
+- Puntuación: si todas o ninguna aciertan, el pistero suma 0 y el resto 2. Si no, el pistero y cada acertante suman 3. Además cada mesa no pistera suma 1 por cada voto que reciba su carta señuelo.
+- Se repone la mano, el turno de pistero rota. La partida termina cuando el mazo no da para reponer (esa es la última ronda) o cuando una mesa llega a 30 puntos.
 
-1. El profesor abre `/` (panel del profesor) e inicia partida eligiendo 3 o 4 mesas.
-2. Por cada mesa, pulsa **Abrir mano** — se abre `/mano?mesa=...&cartas=...` en una pestaña nueva; esa pestaña se envía/abre físicamente en la pantalla táctil de esa mesa.
-3. El equipo pistero mira su mano (privada) y da una pista en voz alta sin decir cuál es su carta.
-4. Cada mesa (incluida la del pistero) elige en su mano una carta que encaje con la pista. En el panel del profesor, se marca qué carta jugó cada mesa (clicando su miniatura).
-5. Cuando todas han jugado, el profesor pulsa **Montar la pared** y abre `/pared` en la pantalla grande — las cartas salen mezcladas y numeradas.
-6. La sala vota en voz alta/a mano alzada. El profesor teclea en su panel qué número votó cada mesa (no pistero).
-7. **Revelar y puntuar** aplica las reglas clásicas de Dixit (ver `docs/PROPUESTA_DIXIT_EUSKADI.md` del repo de Timeline).
-8. **Siguiente ronda** reparte una carta nueva a cada mesa y pasa el turno de pistero.
+## Pantallas
 
-## Arquitectura
+| Ruta | Dónde se abre | Qué hace |
+|---|---|---|
+| `/` | Dispositivo del profesor | Panel de control: reparto, jugadas, pista, montar la mesa, votos, revelado, marcador |
+| `/mano?mesa=…&cartas=…&ronda=…&jugar=…&n=…[&rol=pistero]` | Pared táctil de cada mesa | Mano privada. Tocar una carta la amplía **sin salir de la mano**; desde ahí se marca como elegida (la pared muestra su letra). Las mesas votantes votan en secreto en la propia pared y muestran el voto cuando lo pide el profesor |
+| `/tablero?c=…&p=…` | Pantalla central | Las cartas jugadas mezcladas y numeradas, con la pista. Tocar una carta la amplía |
+| `/tablero?…&s=…&v=…&pts=…&total=…` | Pantalla central | Revelado: carta del pistero, quién votó a cada carta y puntos |
+| `/carta/:id` | Cualquiera | Una carta a pantalla completa, sin texto |
 
-Mismo patrón sin servidor que [timeline-card-game](../timeline-card-game): React 19 + TypeScript + Vite 6 + Tailwind 4 + `HashRouter`, desplegable en GitHub Pages.
+El estado de la partida vive en `localStorage` del dispositivo del profesor (`src/lib/gameEngine.ts`). Lo que decide cada mesa (carta elegida, voto) solo vive en su pared y se reinicia con cada URL nueva de mano, es decir, cada ronda.
 
-- **Panel del profesor / pared / marcador**: comparten el estado del juego vía `localStorage` del mismo navegador (pensado para ejecutarse en el portátil del profesor, con la pared/marcador en ventanas extendidas al proyector).
-- **Mano de mesa**: al ser un dispositivo físico distinto, su contenido viaja codificado en la propia URL (`?mesa=X&cartas=id1,id2,...`) — no depende de `localStorage` compartido.
-- **Carta individual** (`/carta/:id`): vista de una sola carta a pantalla completa, sin texto que revele nada — reutilizada tanto dentro de la mano como al jugar una carta a la pared.
+## Flujo de una ronda
 
-```
-src/
-├── App.tsx                 # HashRouter con las 5 rutas del juego
-├── lib/
-│   ├── lugares.ts           # Mazo de datos (id, nombre, comarca, imagen) — placeholder de 12
-│   ├── gameEngine.ts         # Motor: reparto, rondas, votos, puntuación — vive en localStorage del profesor
-│   └── utils.ts              # Helper de clases CSS
-└── pages/
-    ├── PanelProfesor.tsx     # / — control de la partida
-    ├── ManoView.tsx           # /mano — mano privada de una mesa
-    ├── CartaView.tsx          # /carta/:id — una carta a pantalla completa
-    ├── ParedView.tsx           # /pared — cartas jugadas, votación y revelado
-    └── MarcadorView.tsx        # /marcador — puntuación acumulada
-```
+1. Panel, paso 1: **Abrir mano** / **Copiar enlace** por mesa y enviar cada mano a su pared.
+2. El pistero dice la pista; el profesor puede escribirla (aparece en la pantalla central). Cada mesa elige en su pared y dice su letra al profesor, que pulsa esa miniatura en el panel.
+3. **Mezclar y montar la mesa** → **Abrir tablero** / **Copiar enlace** y enviarlo a la pantalla central.
+4. Cada mesa vota en su pared (secreto). El profesor pide mostrar los votos y los anota en el panel (los números tachados son la carta propia de cada mesa).
+5. **Revelar y puntuar** → **Abrir revelado** para la pantalla central.
+6. **Siguiente ronda**: repone cartas, rota el pistero y genera los enlaces de mano nuevos (vuelta al paso 1).
 
 ## Desarrollo
 
-### Con Docker
-
 ```bash
-docker compose up -d --build
+docker compose up -d --build     # http://localhost:3002
+npm install && npm run dev       # sin Docker, http://localhost:3000
+npm run lint                     # tsc --noEmit
 ```
 
-App disponible en [http://localhost:3000](http://localhost:3000).
+Smoke test de una ronda completa con Playwright: ver cabecera de `.verify/test.mjs`.
 
-### Sin Docker
-
-```bash
-npm install
-npm run dev
-```
-
-## Pendiente antes de jugar en serio
-
-- Sustituir las 12 ilustraciones placeholder por arte ambiguo generado con IA, y ampliar el mazo a 40 lugares (`src/lib/lugares.ts`).
-- Probar el flujo completo en una sala real con las mesas-pantalla táctiles y ajustar la UX de reparto (QR opcional para no tener que copiar URLs largas a mano).
+Stack: React 19 + TypeScript + Vite 6 + Tailwind 4 + `HashRouter`; desplegable en GitHub Pages (`.github/workflows/deploy.yml`, `base` en `vite.config.ts`).
 
 ## Licencia
 
-MIT
+MIT (código). Las imágenes de las cartas tienen su propia atribución en `public/CREDITS.md`.
