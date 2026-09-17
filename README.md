@@ -14,7 +14,7 @@ El mazo (`src/lib/cartas.ts`, imágenes en `public/cartas/`) son 48 ilustracione
 - Las miniaturas de cada mesa en el panel abren la carta en su propia página (útil para reenviar una carta a una pared).
 - **Cartas que se giran**: toda carta suelta se abre sin indicar de qué mesa es. El botón del ojo le da la vuelta en cualquier momento: sigue viéndose la imagen, ahora con la mesa; otro toque la vuelve a ocultar.
 - **Mano**: la mano inicial se envía a la pared de la mesa. Como todas sus cartas comparten ventana, la mesa elimina con la ✕ la carta que ya ha usado (con confirmación y «Deshacer»); se recuerda en esa pantalla.
-- **Votación anónima**: «Cartas de voto» abre para cada mesa una mano con una carta por cada carta en juego (4 con 4 mesas; 5 con 3 mesas). Todas empiezan boca abajo y en todas se ve siempre la mesa. El ojo de cada una la gira para ver su número; al tocarla se abre suelta en una pestaña nueva, **siempre oculta**, y en la mano vuelve a ocultarse sola para no delatar el voto. La carta de voto suelta tiene un botón grande con un ojo que revela u oculta el voto junto a la mesa en cualquier momento.
+- **Votación anónima**: «Cartas de voto» abre para cada mesa una mano con una carta por cada carta en juego (4 con 4 mesas; 5 con 3 mesas). En la mano cada carta muestra su número y la mesa; al tocarla se abre suelta en una pestaña nueva, **siempre oculta**, lista para enviarla. La carta de voto suelta tiene un botón grande con un ojo que revela u oculta el voto junto a la mesa en cualquier momento.
 
 Lo que ocurre sobre las paredes (jugar la carta, mezclar en la pared de votación, recoger los votos, puntuar) lo lleva el manager con el sistema de la sala; la app no lo registra. La mesa y el voto viajan codificados en la URL de cada carta para que no se lean a simple vista.
 
@@ -25,7 +25,7 @@ Lo que ocurre sobre las paredes (jugar la carta, mezclar en la pared de votació
 | `/` | Dispositivo del manager | Panel: reparto, cartas de voto, sacar cartas, siguiente ronda, turno de pistero |
 | `/carta/:id?m=…` | Cualquier pared | Una carta a pantalla completa; el ojo muestra/oculta la mesa |
 | `/mano?mesa=…&cartas=…` | Pared de la mesa | Mano inicial: cada carta se abre en una página independiente y puede eliminarse tras usarla |
-| `/votos?mesa=…&n=…` | Pared de la mesa | Mano de cartas de voto, boca abajo por defecto |
+| `/votos?mesa=…&n=…` | Pared de la mesa | Mano de cartas de voto con su número a la vista |
 | `/voto/:token` | Donde se envíe el voto | Carta de voto suelta: mesa siempre visible, voto oculto hasta pulsar el ojo |
 
 El estado (mazo, cartas repartidas, ronda, pistero) vive en `localStorage` del dispositivo del manager (`src/lib/gameEngine.ts`).

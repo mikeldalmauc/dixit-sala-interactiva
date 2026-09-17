@@ -29,7 +29,7 @@ export default function VotoView() {
       >
         <span
           className={cn(
-            "absolute top-6 px-6 py-2 rounded-full text-2xl sm:text-3xl font-black",
+            "absolute top-6 px-8 py-3 rounded-full text-4xl sm:text-6xl font-black",
             revelado ? "bg-[#283618] text-white" : "bg-[#E9B872] text-[#283618]",
           )}
         >
@@ -44,7 +44,7 @@ export default function VotoView() {
           <span className="text-[min(30vh,30vw)] leading-none font-serif text-[#E9B872]/70">?</span>
         )}
       </div>
-      <BotonOjo visible={revelado} onClick={() => setRevelado((v) => !v)} size={44} className="w-24 h-24 shrink-0" />
+      <BotonOjo visible={revelado} onClick={() => setRevelado((v) => !v)} size={72} className="w-36 h-36 shrink-0" />
     </div>
   );
 }

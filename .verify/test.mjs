@@ -80,15 +80,11 @@ async function run() {
   const votos = await popup(() => page.locator('button:has-text("Cartas de voto")').nth(1).click(), 'votos');
   const cartasVoto = votos.locator('button[class*="aspect-"]');
   check('cartas de voto', await cartasVoto.count(), 4);
-  check('todas empiezan ocultas', await votos.locator('button[aria-label="Ocultar"]').count(), 0);
-  await votos.screenshot({ path: `${OUT}/06-votos-ocultos.png`, fullPage: true });
-  await votos.locator('button[aria-label="Revelar"]').nth(2).click();
-  check('carta 3 girada en la mano', (await cartasVoto.nth(2).innerText()).includes('3'), true);
-  await votos.screenshot({ path: `${OUT}/07-votos-una-girada.png`, fullPage: true });
+  check('la mano de votos muestra los números', (await cartasVoto.allInnerTexts()).map((t) => t.replace(/\D+/g, '').slice(-1)).join(','), '1,2,3,4');
+  await votos.screenshot({ path: `${OUT}/06-votos.png`, fullPage: true });
 
   const voto = await popup(() => cartasVoto.nth(2).click(), 'voto');
   log.push(`[info] url voto: ${voto.url()}`);
-  check('la mano se re-oculta sola al abrir', await votos.locator('button[aria-label="Ocultar"]').count(), 0);
   check('voto abre oculto', await voto.locator('text=Vota la carta').count(), 0);
   check('voto oculto muestra la mesa', await voto.locator('text=Mesa 2').count(), 1);
   await voto.screenshot({ path: `${OUT}/08-voto-oculto.png` });

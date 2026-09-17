@@ -25,15 +25,15 @@ export default function CartaView() {
       <img src={cartaImg(carta.id)} alt="Carta" className="w-full h-full object-contain select-none" draggable={false} />
       {mesa && revelada && (
         <div className="absolute top-6 inset-x-0 flex justify-center pointer-events-none">
-          <span className="px-8 py-3 rounded-full bg-[#E9B872] text-[#283618] text-4xl font-black shadow-2xl">{mesa}</span>
+          <span className="px-10 py-4 rounded-full bg-[#E9B872] text-[#283618] text-5xl sm:text-7xl font-black shadow-2xl">{mesa}</span>
         </div>
       )}
       {mesa && (
         <BotonOjo
           visible={revelada}
           onClick={() => setRevelada((v) => !v)}
-          size={44}
-          className="absolute bottom-6 left-1/2 -translate-x-1/2 w-24 h-24"
+          size={72}
+          className="absolute bottom-6 left-1/2 -translate-x-1/2 w-36 h-36"
         />
       )}
     </div>

@@ -60,9 +60,9 @@ export default function ManoView() {
               <button
                 onClick={() => setPorConfirmar(id)}
                 aria-label="Eliminar carta de la mano"
-                className="absolute top-2 right-2 w-10 h-10 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-[#A33A1F] active:scale-90"
+                className="absolute top-2 right-2 w-16 h-16 rounded-full bg-black/70 border-2 border-white/40 text-white flex items-center justify-center hover:bg-[#A33A1F] active:scale-90"
               >
-                <X size={22} />
+                <X size={40} />
               </button>
               {porConfirmar === id && (
                 <div className="absolute inset-0 rounded-2xl bg-black/80 flex flex-col items-center justify-center gap-3 p-3 text-center">
