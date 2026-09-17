@@ -1,6 +1,6 @@
-// Smoke test con 3 mesas: reparto (mano -> carta en página independiente),
-// miniatura del panel -> carta, sacar carta del mazo, siguiente ronda con
-// cartas nuevas por repartir y cambio de pistero.
+// Smoke test con 4 mesas: mano (abrir carta, girarla con el ojo, eliminar y
+// deshacer), cartas de voto (girar, abrir oculta, auto-ocultar en la mano,
+// revelar), sacar carta del mazo y siguiente ronda.
 //
 // Uso: con el contenedor de dev levantado (docker compose up -d --build dev,
 // puerto 3002 del host), ejecutar desde la raíz del repo:
@@ -17,6 +17,9 @@ fs.rmSync(OUT, { recursive: true, force: true });
 fs.mkdirSync(OUT, { recursive: true });
 
 const log = [];
+const check = (nombre, real, esperado) =>
+  log.push(`[${String(real) === String(esperado) ? 'ok' : 'FALLO'}] ${nombre}: ${real} (esperado ${esperado})`);
+
 const browser = await chromium.launch();
 const context = await browser.newContext({ viewport: { width: 1400, height: 900 } });
 
@@ -25,8 +28,9 @@ function track(p, tag) {
   p.on('pageerror', (err) => !err.message.includes('WebSocket') && log.push(`[${tag}-pageerror] ${err.message}`));
 }
 
-async function popup(action) {
+async function popup(action, tag) {
   const [p] = await Promise.all([context.waitForEvent('page'), action()]);
+  track(p, tag);
   await p.waitForLoadState();
   await p.waitForTimeout(400);
   return p;
@@ -39,43 +43,75 @@ const mazo = async () => /Mazo: (\d+)/.exec(await page.locator('text=/Mazo: \\d+
 async function run() {
   await page.goto(BASE + '/', { timeout: 20000 });
   await page.waitForSelector('text=Dixit · Sala interactiva', { timeout: 15000 });
-  await page.screenshot({ path: `${OUT}/01-config.png` });
-
-  await page.click('button:has-text("3")');
   await page.click('button:has-text("Iniciar partida")');
   await page.waitForSelector('text=Pistero:');
-  log.push(`[info] mazo inicial: ${await mazo()} (esperado 27)`);
-  await page.screenshot({ path: `${OUT}/02-panel.png`, fullPage: true });
+  check('mazo inicial', await mazo(), 24);
+  await page.screenshot({ path: `${OUT}/01-panel.png`, fullPage: true });
 
-  const mano = await popup(() => page.locator('button:has-text("Ver mano")').nth(0).click());
-  track(mano, 'mano');
-  await mano.screenshot({ path: `${OUT}/03-mano.png`, fullPage: true });
-  const carta = await popup(() => mano.locator('button[class*="aspect-"]').first().click());
-  track(carta, 'carta');
-  log.push(`[info] url carta desde mano: ${carta.url()}`);
-  await carta.screenshot({ path: `${OUT}/04-carta.png` });
+  // --- Mano: abrir carta, girarla, eliminar y deshacer ---
+  const mano = await popup(() => page.locator('button:has-text("Ver mano")').nth(1).click(), 'mano');
+  const cartasMano = mano.locator('button[class*="aspect-"]');
+  check('cartas en la mano', await cartasMano.count(), 6);
+
+  const carta = await popup(() => cartasMano.first().click(), 'carta');
+  check('carta abre sin mesa visible', await carta.locator('text=Mesa 2').count(), 0);
+  await carta.screenshot({ path: `${OUT}/02-carta-oculta.png` });
+  await carta.click('button[aria-label="Revelar"]');
+  check('carta girada muestra la mesa', await carta.locator('text=Mesa 2').count(), 1);
+  check('carta girada sigue mostrando la imagen', await carta.locator('img').count(), 1);
+  await carta.screenshot({ path: `${OUT}/03-carta-revelada.png` });
+  await carta.click('button[aria-label="Ocultar"]');
+  check('carta vuelve a ocultar la mesa', await carta.locator('text=Mesa 2').count(), 0);
   await carta.close();
+
+  await mano.locator('button[aria-label="Eliminar carta de la mano"]').first().click();
+  await mano.screenshot({ path: `${OUT}/04-mano-confirmar.png`, fullPage: true });
+  await mano.click('button:has-text("Eliminar")');
+  check('cartas tras eliminar', await cartasMano.count(), 5);
+  await mano.reload();
+  await mano.waitForTimeout(400);
+  check('eliminación persiste al recargar', await cartasMano.count(), 5);
+  await mano.screenshot({ path: `${OUT}/05-mano-eliminada.png`, fullPage: true });
+  await mano.click('button:has-text("Deshacer")');
+  check('cartas tras deshacer', await cartasMano.count(), 6);
   await mano.close();
 
-  const desdePanel = await popup(() => page.locator('button[class*="aspect-"]').first().click());
-  log.push(`[info] url carta desde miniatura del panel: ${desdePanel.url()}`);
-  await desdePanel.close();
+  // --- Cartas de voto ---
+  const votos = await popup(() => page.locator('button:has-text("Cartas de voto")').nth(1).click(), 'votos');
+  const cartasVoto = votos.locator('button[class*="aspect-"]');
+  check('cartas de voto', await cartasVoto.count(), 4);
+  check('todas empiezan ocultas', await votos.locator('button[aria-label="Ocultar"]').count(), 0);
+  await votos.screenshot({ path: `${OUT}/06-votos-ocultos.png`, fullPage: true });
+  await votos.locator('button[aria-label="Revelar"]').nth(2).click();
+  check('carta 3 girada en la mano', (await cartasVoto.nth(2).innerText()).includes('3'), true);
+  await votos.screenshot({ path: `${OUT}/07-votos-una-girada.png`, fullPage: true });
 
-  const sacada = await popup(() => page.locator('button:has-text("Sacar carta")').nth(1).click());
-  log.push(`[info] url carta sacada: ${sacada.url()}`);
+  const voto = await popup(() => cartasVoto.nth(2).click(), 'voto');
+  log.push(`[info] url voto: ${voto.url()}`);
+  check('la mano se re-oculta sola al abrir', await votos.locator('button[aria-label="Ocultar"]').count(), 0);
+  check('voto abre oculto', await voto.locator('text=Vota la carta').count(), 0);
+  check('voto oculto muestra la mesa', await voto.locator('text=Mesa 2').count(), 1);
+  await voto.screenshot({ path: `${OUT}/08-voto-oculto.png` });
+  await voto.click('button[aria-label="Revelar"]');
+  check('voto revelado muestra el número', await voto.locator('text=/^3$/').count(), 1);
+  check('voto revelado muestra la mesa', await voto.locator('text=Mesa 2').count(), 1);
+  await voto.screenshot({ path: `${OUT}/09-voto-revelado.png` });
+  await voto.click('button[aria-label="Ocultar"]');
+  check('voto se puede volver a ocultar', await voto.locator('text=Vota la carta').count(), 0);
+  await voto.close();
+  await votos.close();
+
+  // --- Mazo ---
+  const sacada = await popup(() => page.locator('button:has-text("Sacar carta")').nth(0).click(), 'sacada');
+  check('carta sacada lleva mesa (tiene ojo)', await sacada.locator('button[aria-label="Revelar"]').count(), 1);
   await sacada.close();
-  log.push(`[info] mazo tras sacar: ${await mazo()} (esperado 26)`);
+  check('mazo tras sacar', await mazo(), 23);
 
   await page.click('button:has-text("Siguiente ronda")');
   await page.waitForSelector('text=Ronda 2');
-  await page.waitForSelector('text=Cartas sacadas del mazo');
-  log.push(`[info] mazo tras ronda: ${await mazo()} (esperado 21)`);
-  log.push(`[info] cartas por repartir: ${await page.locator('button:has-text("Abrir carta")').count()} (esperado 5)`);
-  log.push(`[info] pistero: ${await page.locator('text=/Pistero: .*/').innerText()} (esperado Mesa 2)`);
-  await page.screenshot({ path: `${OUT}/05-ronda2-repartir.png`, fullPage: true });
-  const nueva = await popup(() => page.locator('button:has-text("Abrir carta")').first().click());
-  await nueva.close();
-  log.push(`[info] por repartir tras abrir una: ${await page.locator('button:has-text("Abrir carta")').count()} (esperado 4)`);
+  check('mazo tras ronda', await mazo(), 19);
+  check('cartas por repartir', await page.locator('button:has-text("Abrir carta")').count(), 4);
+  await page.screenshot({ path: `${OUT}/10-ronda2.png`, fullPage: true });
 }
 
 try {

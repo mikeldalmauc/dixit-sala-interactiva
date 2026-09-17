@@ -13,6 +13,7 @@ import {
   resetGame,
   buildManoUrl,
   buildCartaUrl,
+  buildVotosUrl,
 } from "../lib/gameEngine";
 
 const NOMBRES_POR_DEFECTO = ["Mesa 1", "Mesa 2", "Mesa 3", "Mesa 4"];
@@ -114,7 +115,7 @@ export default function PanelProfesor() {
   const cartasPorRonda = state.mesas.reduce((acc, m) => acc + cartasAJugar(state, m), 0);
 
   const abrirYRepartir = (mesa: string, id: string) => {
-    abrir(buildCartaUrl(id));
+    abrir(buildCartaUrl(id, mesa));
     marcarRepartida(mesa, id);
   };
 
@@ -179,8 +180,9 @@ export default function PanelProfesor() {
       <section>
         <h2 className="text-xs uppercase tracking-widest text-[#5A5A40] font-bold mb-2">Mesas</h2>
         <p className="text-sm text-[#5A5A40] mb-4">
-          «Ver mano» abre las cartas repartidas a una mesa para enviarlas una a una a su pared. Pulsar una miniatura
-          abre esa carta en su propia página.
+          «Ver mano» abre la mano de una mesa y «Cartas de voto» sus cartas para votar en secreto; ambas se envían a su
+          pared. Pulsar una miniatura abre esa carta en su propia página. Toda carta suelta se abre sin mostrar la mesa
+          y se gira con el botón del ojo.
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5">
           {state.mesas.map((mesa) => {
@@ -202,6 +204,12 @@ export default function PanelProfesor() {
                       Ver mano
                     </button>
                     <button
+                      onClick={() => abrir(buildVotosUrl(state, mesa))}
+                      className="text-xs px-3 py-1.5 bg-[#F7F3EF] border border-[#D1CABF] rounded-full font-bold hover:bg-[#EBE7E0]"
+                    >
+                      Cartas de voto
+                    </button>
+                    <button
                       onClick={() => sacarYAbrir(mesa)}
                       disabled={mazoVacio}
                       className="text-xs px-3 py-1.5 bg-[#283618] text-white rounded-full font-bold hover:bg-[#1c2611] disabled:bg-[#D1CABF]"
@@ -217,7 +225,7 @@ export default function PanelProfesor() {
                   {state.manos[mesa].map((id, i) => (
                     <button
                       key={id}
-                      onClick={() => abrir(buildCartaUrl(id))}
+                      onClick={() => abrir(buildCartaUrl(id, mesa))}
                       title={getCarta(id)?.titulo}
                       className="relative aspect-[3/4] rounded-md overflow-hidden border-2 border-transparent hover:border-[#BC6C25] transition-all"
                     >

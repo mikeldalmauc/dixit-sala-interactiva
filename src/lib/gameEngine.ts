@@ -1,4 +1,5 @@
 import { CARTAS } from "./cartas";
+import { codificar } from "./utils";
 
 const GAME_KEY = "dixit_sala_game";
 
@@ -118,6 +119,20 @@ export function buildManoUrl(state: GameState, mesa: string): string {
   return url("/mano", { mesa, cartas: state.manos[mesa].join(",") });
 }
 
-export function buildCartaUrl(id: string): string {
-  return url(`/carta/${id}`, {});
+// Con mesa, la carta puede darse la vuelta para mostrar de qué mesa es.
+export function buildCartaUrl(id: string, mesa?: string): string {
+  return url(`/carta/${id}`, mesa ? { m: codificar(mesa) } : {});
+}
+
+export function cartasEnMesa(state: GameState): number {
+  return state.mesas.reduce((acc, m) => acc + cartasAJugar(state, m), 0);
+}
+
+// Mano de cartas de voto de una mesa: una por cada carta que habrá en la mesa.
+export function buildVotosUrl(state: GameState, mesa: string): string {
+  return url("/votos", { mesa, n: String(cartasEnMesa(state)) });
+}
+
+export function buildVotoUrl(mesa: string, voto: number): string {
+  return url(`/voto/${codificar(`${voto}|${mesa}`)}`, {});
 }
